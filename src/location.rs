@@ -13,11 +13,8 @@ const SELECTION_BUTTON: xproto::Button = 1;
 const GRAB_MASK: u16 =
     xproto::EVENT_MASK_BUTTON_PRESS as u16 | xproto::EVENT_MASK_POINTER_MOTION as u16;
 const PREVIEW_SIZE: u32 = 256;
-const PREVIEW_WIDTH: u32 = 256;
-const PREVIEW_HEIGHT: u32 = 256;
 
-// FIXME: surely there's a better way to grab pointer events while changing cursor?
-fn change_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
+fn grab_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
     let reply = xproto::grab_pointer(
         conn,
         false,
@@ -38,6 +35,13 @@ fn change_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error>
     Ok(())
 }
 
+fn update_cursor(conn: &Connection, cursor: u32) -> Result<(), Error> {
+    xproto::change_active_pointer_grab_checked(conn, cursor, xbase::CURRENT_TIME, GRAB_MASK)
+        .request_check()?;
+
+    Ok(())
+}
+
 #[inline]
 fn is_inside_circle(x: isize, y: isize, r: isize) -> bool {
     (x - r).pow(2) + (y - r).pow(2) < r.pow(2)
@@ -45,6 +49,7 @@ fn is_inside_circle(x: isize, y: isize, r: isize) -> bool {
 
 // TODO: grid
 // TODO: dynamic zoom/size (modifier, etc)
+// TODO: simplify vec indexing by using a wrapper struct
 fn draw_magnifying_glass(
     cursor_pixels: &mut [u32],
     window_len: u16,
@@ -54,34 +59,45 @@ fn draw_magnifying_glass(
     let magnification = scale as usize;
     let window_len = window_len as usize;
 
+    let grid_color: u32 = ARGB::new(0xff, 0x55, 0x55, 0x55).into();
+
     let border_width = 1;
     let border_radius = (PREVIEW_SIZE as isize) / 2;
     let content_radius = border_radius - border_width;
 
     // Upscale window pixels into the cursor image
-    let cursor_len = window_len * magnification;
+    let cursor_len = (window_len * magnification) + 1;
     for x in 0..window_len {
         for y in 0..window_len {
             let win_pos = (x * window_len) + y;
-
             let cur_pos = ((x * magnification.pow(2)) * window_len) + (y * magnification);
 
             for i in 0..magnification {
                 for j in 0..magnification {
                     let pos = cur_pos + (i * cursor_len) + j;
+                    if pos >= cursor_pixels.len() {
+                        continue
+                    }
 
                     // Check if we're inside our circle
                     let x = (pos / cursor_len) as isize;
                     let y = (pos % cursor_len) as isize;
 
-                    cursor_pixels[pos] =
-                        if is_inside_circle(x, y, content_radius) {
-                            window_pixels[win_pos].into()
-                        } else if is_inside_circle(x + border_width, y + border_width, border_radius) {
-                            std::u32::MAX
+                    cursor_pixels[pos] = if is_inside_circle(x, y, content_radius) {
+                        // draw center?
+                        if i == 0 && j == 0 {
+                            ARGB::new(0xff, 0xff, 0, 0).into()
+                            // draw grid
+                        } else if i == 0 || j == 0 {
+                            grid_color
                         } else {
-                            0
-                        };
+                            window_pixels[win_pos].into()
+                        }
+                    } else if is_inside_circle(x + border_width, y + border_width, border_radius) {
+                        std::u32::MAX
+                    } else {
+                        0
+                    };
                 }
             }
         }
@@ -95,16 +111,16 @@ fn create_new_cursor(
     scale: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        let mut cursor_image = XcursorImageCreate(PREVIEW_WIDTH as i32, PREVIEW_HEIGHT as i32);
+        let mut cursor_image = XcursorImageCreate(PREVIEW_SIZE as i32, PREVIEW_SIZE as i32);
 
         // Set the "hot spot" - this is where the pointer actually is inside the image
-        (*cursor_image).xhot = PREVIEW_WIDTH / 2;
-        (*cursor_image).yhot = PREVIEW_HEIGHT / 2;
+        (*cursor_image).xhot = PREVIEW_SIZE / 2;
+        (*cursor_image).yhot = PREVIEW_SIZE / 2;
 
         // Draw our custom image
         let mut pixels = slice::from_raw_parts_mut(
             (*cursor_image).pixels,
-            (PREVIEW_WIDTH * PREVIEW_HEIGHT) as usize,
+            (PREVIEW_SIZE * PREVIEW_SIZE) as usize,
         );
         draw_magnifying_glass(&mut pixels, window_size, window_pixels, scale);
 
@@ -118,6 +134,20 @@ fn create_new_cursor(
     } as u32)
 }
 
+pub trait EnsureOdd {
+    fn ensure_odd(self) -> Self;
+}
+
+impl EnsureOdd for u16 {
+    fn ensure_odd(self) -> Self {
+        if self % 2 == 0 {
+            self + 1
+        } else {
+            self
+        }
+    }
+}
+
 // TODO: ensure odd numbers for center pixel
 fn get_window_rect_around_pointer(
     conn: &Connection,
@@ -127,10 +157,11 @@ fn get_window_rect_around_pointer(
 ) -> Result<(u16, Vec<ARGB>), Error> {
     let zoom_reciprocal = 1.0 / scale as f32;
     let curr_size = PREVIEW_SIZE as f32 + 1.0;
-    let size = (curr_size * zoom_reciprocal).floor() as u16;
 
+    let size = ((curr_size * zoom_reciprocal).floor() as u16);
     let x = x - ((size as i16) / 2);
     let y = y - ((size as i16) / 2);
+
     Ok((size, color::window_rect(conn, root, (x, y, size, size))?))
 }
 
@@ -141,12 +172,13 @@ pub fn wait_for_location(
     let root = screen.root();
 
     // NOTE: must be a multiple of 2
-    let scale = 8;
+    let scale = 32;
 
     let pointer = xproto::query_pointer(conn, root).get_reply()?;
     let (size, initial_rect) =
         get_window_rect_around_pointer(conn, root, (pointer.root_x(), pointer.root_y()), scale)?;
-    change_cursor(
+
+    grab_cursor(
         conn,
         root,
         create_new_cursor(conn, size, initial_rect, scale)?,
@@ -171,7 +203,7 @@ pub fn wait_for_location(
                         scale,
                     )?;
 
-                    change_cursor(conn, root, create_new_cursor(conn, size, rect, scale)?)?;
+                    update_cursor(conn, create_new_cursor(conn, size, rect, scale)?)?;
                 }
                 _ => {
                     // ???
