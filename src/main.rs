@@ -3,7 +3,6 @@ mod cli;
 mod color;
 mod format;
 mod location;
-mod preview;
 mod selection;
 
 use clap::ArgMatches;
@@ -15,7 +14,6 @@ use crate::cli::get_cli;
 use crate::color::window_color_at_point;
 use crate::format::{Format, FormatColor, FormatString};
 use crate::location::wait_for_location;
-use crate::preview::Preview;
 use crate::selection::{into_daemon, set_selection, Selection};
 
 fn run(args: &ArgMatches) -> Result<(), Error> {
@@ -46,12 +44,9 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
     let use_selection = selection.is_some();
     let background = std::env::var("XCOLOR_FOREGROUND").is_err();
 
-    let use_preview = !args.is_present("no_preview");
-    let use_shape = std::env::var("XCOLOR_DISABLE_SHAPE").is_err();
-
     let mut in_parent = true;
 
-    let (conn, screen) = Connection::connect(None)?;
+    let (conn, screen) = Connection::connect_with_xlib_display()?;
 
     {
         let screen = conn
@@ -61,13 +56,7 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
             .ok_or_else(|| err_msg("Could not find screen"))?;
         let root = screen.root();
 
-        let point = if use_preview {
-            let mut preview = Preview::create(&conn, &screen, use_shape)?;
-            wait_for_location(&conn, &screen, |event| preview.handle_event(event))?
-        } else {
-            wait_for_location(&conn, &screen, |_| Ok(true))?
-        };
-
+        let point = wait_for_location(&conn, &screen)?;
         if let Some(point) = point {
             let color = window_color_at_point(&conn, root, point)?;
             let output = formatter.format(color);
