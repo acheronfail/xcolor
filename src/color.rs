@@ -12,8 +12,18 @@ pub struct ARGB {
 }
 
 impl ARGB {
-    pub const TRANSPARENT: ARGB = ARGB { a: 0, r: 0, g: 0, b: 0 };
-    pub const BLACK: ARGB = ARGB { a: 0xff, r: 0, g: 0, b: 0 };
+    pub const TRANSPARENT: ARGB = ARGB {
+        a: 0,
+        r: 0,
+        g: 0,
+        b: 0,
+    };
+    pub const BLACK: ARGB = ARGB {
+        a: 0xff,
+        r: 0,
+        g: 0,
+        b: 0,
+    };
     pub const WHITE: ARGB = ARGB {
         a: 0xff,
         r: 0xff,
@@ -66,11 +76,18 @@ impl ARGB {
 
 impl From<ARGB> for u32 {
     fn from(color: ARGB) -> u32 {
-        u32::from(color.a) << 24 | u32::from(color.r) << 16 | u32::from(color.g) << 8 | u32::from(color.b)
+        u32::from(color.a) << 24
+            | u32::from(color.r) << 16
+            | u32::from(color.g) << 8
+            | u32::from(color.b)
     }
 }
 
-pub fn window_rect(conn: &Connection, window: xproto::Window, (x, y, width, height): (i16, i16, u16, u16)) -> Result<Vec<ARGB>, Error> {
+pub fn window_rect(
+    conn: &Connection,
+    window: xproto::Window,
+    (x, y, width, height): (i16, i16, u16, u16),
+) -> Result<Vec<ARGB>, Error> {
     let reply = xproto::get_image(
         conn,
         xproto::IMAGE_FORMAT_Z_PIXMAP as u8,

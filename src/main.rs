@@ -39,6 +39,17 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
         &simple_format
     };
 
+    let scale = args
+        .value_of("scale")
+        .unwrap_or("8")
+        .parse::<u32>()
+        .unwrap_or_else(|e| error(&format!("Invalid scale value: {}", e)));
+    let preview_size = args
+        .value_of("preview_size")
+        .unwrap_or("255")
+        .parse::<u32>()
+        .unwrap_or_else(|e| error(&format!("Invalid preview_size value: {}", e)));
+
     let selection = args.values_of("selection").and_then(|mut v| {
         v.next()
             .map_or(Some(Selection::Clipboard), |v| v.parse::<Selection>().ok())
@@ -58,10 +69,7 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
             .ok_or_else(|| err_msg("Could not find screen"))?;
         let root = screen.root();
 
-        // TODO: cli flag
-        let scale = 28;
-
-        if let Some(color) = wait_for_location(&conn, &screen, scale)? {
+        if let Some(color) = wait_for_location(&conn, &screen, preview_size, scale)? {
             let output = formatter.format(color);
 
             if use_selection {

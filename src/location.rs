@@ -12,9 +12,6 @@ use crate::util::EnsureOdd;
 // Left mouse button
 const SELECTION_BUTTON: xproto::Button = 1;
 const GRAB_MASK: u16 = (xproto::EVENT_MASK_BUTTON_PRESS | xproto::EVENT_MASK_POINTER_MOTION) as u16;
-// TODO: scale for HiDPI ? (is it done already for user's cursor?)
-const PREVIEW_SIZE: u32 = 256 - 1;
-const PREVIEW_SIZE_MAGNIFIED: u32 = 256 + 128 - 1;
 
 fn grab_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
     let reply = xproto::grab_pointer(
@@ -74,6 +71,7 @@ fn create_new_cursor(
     } as u32)
 }
 
+// TODO: test multi-monitor
 fn get_window_rect_around_pointer(
     conn: &Connection,
     root: u32,
@@ -81,6 +79,7 @@ fn get_window_rect_around_pointer(
     preview_width: u32,
     scale: u32,
 ) -> Result<(u16, Vec<ARGB>), Error> {
+    // FIXME: fails if we ask for a region outside the screen, so fill those pixels with empty data
     let size = ((preview_width / scale) as u16).ensure_odd();
     let x = x - ((size as i16) / 2);
     let y = y - ((size as i16) / 2);
@@ -91,12 +90,11 @@ fn get_window_rect_around_pointer(
 pub fn wait_for_location(
     conn: &Connection,
     screen: &xproto::Screen,
+    preview_width: u32,
     scale: u32,
 ) -> Result<Option<ARGB>, Error> {
     let root = screen.root();
-
-    // TODO: configurable
-    let preview_width = PREVIEW_SIZE;
+    let preview_width = preview_width.ensure_odd();
 
     let pointer = xproto::query_pointer(conn, root).get_reply()?;
     let pointer_pos = (pointer.root_x(), pointer.root_y());
@@ -114,12 +112,11 @@ pub fn wait_for_location(
         let event = conn.wait_for_event();
         if let Some(event) = event {
             match event.response_type() {
-                // TODO: handle modifier key for magnifying the preview size
-                // TODO: handle escape key?
                 xproto::BUTTON_PRESS => {
                     let event: &xproto::ButtonPressEvent = unsafe { xbase::cast_event(&event) };
                     if event.detail() == SELECTION_BUTTON {
-                        let pixels = color::window_rect(conn, root, (event.root_x(), event.root_y(), 1, 1))?;
+                        let pixels =
+                            color::window_rect(conn, root, (event.root_x(), event.root_y(), 1, 1))?;
                         break Some(pixels[0]);
                     }
                 }

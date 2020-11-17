@@ -258,7 +258,10 @@ fn test_examples_from_readme() {
     assert_eq!(fmt.format(ARGB::new(0xff, 0, 255, 0)), "#00FF00");
 
     let fmt: FormatString = "rgb(%{r}, %{g}, %{b})".parse().unwrap();
-    assert_eq!(fmt.format(ARGB::new(0xff, 255, 255, 255)), "rgb(255, 255, 255)");
+    assert_eq!(
+        fmt.format(ARGB::new(0xff, 255, 255, 255)),
+        "rgb(255, 255, 255)"
+    );
 
     let fmt: FormatString = "%{r};%{g};%{b}".parse().unwrap();
     assert_eq!(fmt.format(ARGB::new(0xff, 0, 0, 0)), "0;0;0");

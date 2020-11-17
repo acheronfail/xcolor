@@ -47,7 +47,7 @@ impl<'a, T> PixelArrayMut<'a, T> {
     }
 
     /// TODO: doc
-    pub unsafe  fn from_raw_parts(data: *mut T, width: usize) -> Self {
+    pub unsafe fn from_raw_parts(data: *mut T, width: usize) -> Self {
         Self::new(slice::from_raw_parts_mut(data, width * width), width)
     }
 
