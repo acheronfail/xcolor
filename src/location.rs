@@ -71,6 +71,36 @@ fn create_new_cursor(
     } as u32)
 }
 
+pub struct Rect {
+    x: i16,
+    y: i16,
+    width: u16,
+    height: u16
+}
+
+impl Rect {
+    pub fn new(x: i16, y: i16, width: u16, height: u16) -> Rect {
+        Rect { x, y, width, height }
+    }
+
+    pub fn is_inside(&self, x: i16, y: i16) -> bool {
+        let x_is_inside = x >= self.x && x <= self.x + self.width;
+        let y_is_inside = y >= self.y && y <= self.y + self.height;
+        x_is_inside && y_is_inside
+    }
+
+    // TODO: should this be greater than u16?
+    pub fn area(&self) -> u16 {
+        self.width * self.height
+    }
+}
+
+impl From<Rect> for (i16, i16, u16, u16) {
+    fn from(rect: Rect) -> (i16, i16, u16, u16) {
+        (rect.x, rect.y, rect.width, rect.height)
+    }
+}
+
 // TODO: test multi-monitor
 fn get_window_rect_around_pointer(
     conn: &Connection,
@@ -85,11 +115,30 @@ fn get_window_rect_around_pointer(
 
     // FIXME: fails if we ask for a region outside the screen, so fill those pixels with empty data
     let size = ((preview_width / scale) as u16).ensure_odd();
-    let x = (x - ((size as i16) / 2)).clamped(0, root_width - 1);
-    let y = (y - ((size as i16) / 2)).clamped(0, root_height - 1);
+    let x = x - ((size as i16) / 2);
+    let y = y - ((size as i16) / 2);
+    let desired_rect = Rect::new(x, y, size, size);
+    let actual_rect = Rect::new(
+        x.clamped(0, x),
+        y.clamped(0, y),
+        size.clamped(1, root_width - x),
+        size.clamped(1, root_height - y)
+    );
 
-    let pixels = color::window_rect(conn, root, (x, y, size, size))?;
-    Ok((size, pixels))
+    let screenshot = color::window_rect(conn, root, actual_rect)?;
+    if screenshot.len() < desired_rect.area() {
+        let mut pixels = Vec::with_capacity(desired_area);
+        for x in 0..actual.width {
+            for y in 0..actual.height {
+                if desired_rect.is_inside(x, y) {
+                    // FIXME: get coordinates from screenshot vec?
+                    // there's probably an easier way to do this...
+                    pixels[x * size + y] = screenshot
+            }
+        }
+    } else {
+        Ok((size, screenshot))
+    }
 }
 
 pub fn wait_for_location(
