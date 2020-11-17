@@ -14,7 +14,6 @@ use nix::unistd::ForkResult;
 use xcb::base::Connection;
 
 use crate::cli::get_cli;
-use crate::color::window_color_at_point;
 use crate::format::{Format, FormatColor, FormatString};
 use crate::location::wait_for_location;
 use crate::selection::{into_daemon, set_selection, Selection};
@@ -59,9 +58,10 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
             .ok_or_else(|| err_msg("Could not find screen"))?;
         let root = screen.root();
 
-        let point = wait_for_location(&conn, &screen)?;
-        if let Some(point) = point {
-            let color = window_color_at_point(&conn, root, point)?;
+        // TODO: cli flag
+        let scale = 28;
+
+        if let Some(color) = wait_for_location(&conn, &screen, scale)? {
             let output = formatter.format(color);
 
             if use_selection {

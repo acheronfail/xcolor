@@ -27,7 +27,7 @@ features = ["xlib", "xcursor"]
 
 [dependencies.xcb]
 version = "0.9"
-features = ["shape", "xfixes", "xlib_xcb"]
+features = ["xlib_xcb"]
 
 [build-dependencies]
 clap = "2.33"

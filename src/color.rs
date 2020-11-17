@@ -98,33 +98,6 @@ pub fn window_rect(conn: &Connection, window: xproto::Window, (x, y, width, heig
     Ok(pixels)
 }
 
-pub fn window_color_at_point(
-    conn: &Connection,
-    window: xproto::Window,
-    (x, y): (i16, i16),
-) -> Result<ARGB, Error> {
-    let reply = xproto::get_image(
-        conn,
-        xproto::IMAGE_FORMAT_Z_PIXMAP as u8,
-        window,
-        x,
-        y,
-        1,
-        1,
-        std::u32::MAX,
-    )
-    .get_reply()?;
-    if reply.depth() != 24 {
-        // TODO: Figure out what to do with these
-        return Err(err_msg("Unsupported color depth"));
-    }
-    let data = reply.data();
-    let r = data[2];
-    let g = data[1];
-    let b = data[0];
-    Ok(ARGB::new(0xff, r, g, b))
-}
-
 #[test]
 fn test_compaction() {
     assert!(ARGB::new(0xff, 0xff, 0xff, 0xff).is_compactable());

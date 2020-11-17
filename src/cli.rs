@@ -1,5 +1,6 @@
 use clap::{App, Arg};
 
+// TODO: add `scale` and remove obsolete options
 pub fn get_cli() -> App<'static, 'static> {
     App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))

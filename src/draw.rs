@@ -1,67 +1,78 @@
-use crate::pixel::{PixelArray, PixelArrayMut};
 use crate::color::ARGB;
-
-// TODO: scale for HiDPI ?
-pub const PREVIEW_SIZE: u32 = 256 - 1;
-
-const GRID_COLOR: ARGB = ARGB::new(0xff, 0x55, 0x55, 0x55);
+use crate::pixel::{PixelArray, PixelArrayMut};
 
 #[inline]
 fn is_inside_circle(x: isize, y: isize, r: isize) -> bool {
     (x - r).pow(2) + (y - r).pow(2) < r.pow(2)
 }
 
-// TODO: dynamic zoom/size (modifier, etc)
-// TODO: simplify vec indexing by using a wrapper struct
+#[inline]
+fn border_color(color: ARGB) -> u32 {
+    if color.is_dark() {
+        ARGB::WHITE.into()
+    } else {
+        ARGB::BLACK.into()
+    }
+}
+
 pub fn draw_magnifying_glass(
     cursor: &mut PixelArrayMut<u32>,
     screenshot: &PixelArray<ARGB>,
     pixel_size: usize,
 ) {
-    // TODO: change depending on pixel/background, etc
-    let border_color: u32 = std::u32::MAX;
-    let grid_color: u32 = GRID_COLOR.into();
+    assert!(pixel_size % 2 != 0, "pixel_size must be odd");
+    assert!(cursor.width() % 2 != 0, "cursor.length must be odd");
+    assert!(screenshot.width() % 2 != 0, "screenshot.length must be odd");
+
     let transparent: u32 = ARGB::TRANSPARENT.into();
 
+    let pixel_size = pixel_size as isize;
+    let cursor_width = cursor.width() as isize;
+    let screenshot_width = screenshot.width() as isize;
+
     let border_width = 1;
-    let border_radius = (PREVIEW_SIZE as isize) / 2;
+    let border_radius = cursor_width / 2;
     let content_radius = border_radius - border_width;
 
-    assert!(pixel_size % 2 != 0, "pixel_size must be odd");
-    assert!(cursor.width % 2 != 0, "cursor.length must be odd");
-    assert!(screenshot.width % 2 != 0, "screenshot.length must be odd");
+    let cursor_center = cursor_width / 2;
+    let cursor_center_pixel = cursor_center - pixel_size / 2;
+    let screenshot_center = screenshot_width / 2;
+    let offset = screenshot_center * pixel_size - cursor_center_pixel;
 
-    let screenshot_center = screenshot.width / 2;
-    let cursor_center = screenshot_center * pixel_size;
-    let normalised_cursor_center_pixel = cursor.width / 2 - pixel_size / 2;
-    let translation_offset = cursor_center.saturating_sub(normalised_cursor_center_pixel);
+    for cx in 0..cursor_width {
+        for cy in 0..cursor_width {
+            // screenshot coordinates
+            let sx = ((cx + offset) / pixel_size) as usize;
+            let sy = ((cy + offset) / pixel_size) as usize;
+            let screenshot_color = screenshot[(sx, sy)];
 
-    for cursor_x in 0..cursor.width {
-        for cursor_y in 0..cursor.width {
-            let screenshot_x = (cursor_x + translation_offset) / pixel_size;
-            let screenshot_y = (cursor_y + translation_offset) / pixel_size;
-
-            let cx = cursor_x as isize;
-            let cy = cursor_y as isize;
-            cursor[(cursor_x, cursor_y)] = if is_inside_circle(cx, cy, content_radius) {
-                let is_grid_line = (cursor_x + translation_offset) % pixel_size == 0
-                    || (cursor_y + translation_offset) % pixel_size == 0;
+            // set cursor pixel
+            cursor[(cx as usize, cy as usize)] = if is_inside_circle(cx, cy, content_radius) {
+                let is_grid_line =
+                    (cx + offset) % pixel_size == 0 || (cy + offset) % pixel_size == 0;
 
                 if is_grid_line {
-                    let center_x_pixel_box =
-                        cursor_x >= cursor_center && cursor_x <= cursor_center + pixel_size;
-                    let center_y_pixel_box =
-                        cursor_y >= cursor_center && cursor_y <= cursor_center + pixel_size;
-                    if center_x_pixel_box && center_y_pixel_box {
-                        border_color
+                    let is_center_x =
+                        cx >= cursor_center_pixel && cx <= cursor_center_pixel + pixel_size;
+                    let is_center_y =
+                        cy >= cursor_center_pixel && cy <= cursor_center_pixel + pixel_size;
+
+                    // center pixel's border color
+                    if is_center_x && is_center_y {
+                        border_color(screenshot_color)
                     } else {
-                        grid_color
+                        // grid color
+                        if screenshot_color.is_dark() {
+                            screenshot_color.lighten(0.2).into()
+                        } else {
+                            screenshot_color.darken(0.2).into()
+                        }
                     }
                 } else {
-                    screenshot[(screenshot_x, screenshot_y)].into()
+                    screenshot_color.into()
                 }
             } else if is_inside_circle(cx + border_width, cy + border_width, border_radius) {
-                border_color
+                border_color(screenshot_color)
             } else {
                 transparent
             };

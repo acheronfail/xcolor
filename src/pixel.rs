@@ -5,14 +5,18 @@ type Point = (usize, usize);
 
 /// TODO: doc
 pub struct PixelArray<'a, T> {
-    pub pixels: &'a [T],
-    pub width: usize,
+    pixels: &'a [T],
+    width: usize,
 }
 
 impl<'a, T> PixelArray<'a, T> {
     /// TODO: doc
     pub fn new(pixels: &'a [T], width: usize) -> Self {
         Self { pixels, width }
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
     }
 }
 
@@ -32,8 +36,8 @@ impl<'a, T> Index<Point> for PixelArray<'a, T> {
 
 /// TODO: doc
 pub struct PixelArrayMut<'a, T> {
-    pub pixels: &'a mut [T],
-    pub width: usize,
+    pixels: &'a mut [T],
+    width: usize,
 }
 
 impl<'a, T> PixelArrayMut<'a, T> {
@@ -45,6 +49,10 @@ impl<'a, T> PixelArrayMut<'a, T> {
     /// TODO: doc
     pub unsafe  fn from_raw_parts(data: *mut T, width: usize) -> Self {
         Self::new(slice::from_raw_parts_mut(data, width * width), width)
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
     }
 }
 

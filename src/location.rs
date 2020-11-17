@@ -5,14 +5,16 @@ use xcb::base::Connection;
 use xcb::xproto;
 
 use crate::color::{self, ARGB};
-use crate::draw::{draw_magnifying_glass, PREVIEW_SIZE};
+use crate::draw::draw_magnifying_glass;
 use crate::pixel::{PixelArray, PixelArrayMut};
 use crate::util::EnsureOdd;
 
 // Left mouse button
 const SELECTION_BUTTON: xproto::Button = 1;
-const GRAB_MASK: u16 =
-    xproto::EVENT_MASK_BUTTON_PRESS as u16 | xproto::EVENT_MASK_POINTER_MOTION as u16;
+const GRAB_MASK: u16 = (xproto::EVENT_MASK_BUTTON_PRESS | xproto::EVENT_MASK_POINTER_MOTION) as u16;
+// TODO: scale for HiDPI ? (is it done already for user's cursor?)
+const PREVIEW_SIZE: u32 = 256 - 1;
+const PREVIEW_SIZE_MAGNIFIED: u32 = 256 + 128 - 1;
 
 fn grab_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
     let reply = xproto::grab_pointer(
@@ -45,26 +47,27 @@ fn update_cursor(conn: &Connection, cursor: u32) -> Result<(), Error> {
 fn create_new_cursor(
     conn: &Connection,
     screenshot_pixels: &PixelArray<ARGB>,
+    preview_width: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        let mut cursor_image = XcursorImageCreate(PREVIEW_SIZE as i32, PREVIEW_SIZE as i32);
+        let mut cursor_image = XcursorImageCreate(preview_width as i32, preview_width as i32);
 
-        // Set the "hot spot" - this is where the pointer actually is inside the image
-        (*cursor_image).xhot = PREVIEW_SIZE / 2;
-        (*cursor_image).yhot = PREVIEW_SIZE / 2;
+        // set the "hot spot" - this is where the pointer actually is inside the image
+        (*cursor_image).xhot = preview_width / 2;
+        (*cursor_image).yhot = preview_width / 2;
 
-        // Get pixel data as a Rust slice
+        // get pixel data as a mutable Rust slice
         let mut cursor_pixels =
-            PixelArrayMut::from_raw_parts((*cursor_image).pixels, PREVIEW_SIZE as usize);
+            PixelArrayMut::from_raw_parts((*cursor_image).pixels, preview_width as usize);
 
-        // Draw our custom image
-        let pixel_size = (cursor_pixels.width / screenshot_pixels.width).ensure_odd();
+        // draw our custom image
+        let pixel_size = (cursor_pixels.width() / screenshot_pixels.width()).ensure_odd();
         draw_magnifying_glass(&mut cursor_pixels, screenshot_pixels, pixel_size);
 
-        // Convert our XcursorImage into a cursor
+        // convert our XcursorImage into a cursor
         let cursor_id = XcursorImageLoadCursor(conn.get_raw_dpy(), cursor_image) as u32;
 
-        // Free the XcursorImage
+        // free the XcursorImage
         XcursorImageDestroy(cursor_image);
 
         cursor_id
@@ -75,9 +78,10 @@ fn get_window_rect_around_pointer(
     conn: &Connection,
     root: u32,
     (x, y): (i16, i16),
+    preview_width: u32,
     scale: u32,
 ) -> Result<(u16, Vec<ARGB>), Error> {
-    let size = ((PREVIEW_SIZE / scale) as u16).ensure_odd();
+    let size = ((preview_width / scale) as u16).ensure_odd();
     let x = x - ((size as i16) / 2);
     let y = y - ((size as i16) / 2);
 
@@ -87,42 +91,56 @@ fn get_window_rect_around_pointer(
 pub fn wait_for_location(
     conn: &Connection,
     screen: &xproto::Screen,
-) -> Result<Option<(i16, i16)>, Error> {
+    scale: u32,
+) -> Result<Option<ARGB>, Error> {
     let root = screen.root();
 
-    // FIXME: allow multiples of 2, not just powers of 2
-    let scale = 16;
+    // TODO: configurable
+    let preview_width = PREVIEW_SIZE;
 
     let pointer = xproto::query_pointer(conn, root).get_reply()?;
     let pointer_pos = (pointer.root_x(), pointer.root_y());
-    let (width, initial_rect) = get_window_rect_around_pointer(conn, root, pointer_pos, scale)?;
+    let (width, initial_rect) =
+        get_window_rect_around_pointer(conn, root, pointer_pos, preview_width, scale)?;
 
     let screenshot_pixels = PixelArray::new(&initial_rect[..], width.into());
-    grab_cursor(conn, root, create_new_cursor(conn, &screenshot_pixels)?)?;
+    grab_cursor(
+        conn,
+        root,
+        create_new_cursor(conn, &screenshot_pixels, preview_width)?,
+    )?;
 
     let result = loop {
         let event = conn.wait_for_event();
         if let Some(event) = event {
             match event.response_type() {
+                // TODO: handle modifier key for magnifying the preview size
                 // TODO: handle escape key?
                 xproto::BUTTON_PRESS => {
                     let event: &xproto::ButtonPressEvent = unsafe { xbase::cast_event(&event) };
                     if event.detail() == SELECTION_BUTTON {
-                        break Some((event.root_x(), event.root_y()));
+                        let pixels = color::window_rect(conn, root, (event.root_x(), event.root_y(), 1, 1))?;
+                        break Some(pixels[0]);
                     }
                 }
                 xproto::MOTION_NOTIFY => {
                     let event: &xproto::MotionNotifyEvent = unsafe { xbase::cast_event(&event) };
                     let pointer_pos = (event.root_x(), event.root_y());
-                    let (width, rect) =
-                        get_window_rect_around_pointer(conn, root, pointer_pos, scale)?;
+                    let (width, pixels) = get_window_rect_around_pointer(
+                        conn,
+                        root,
+                        pointer_pos,
+                        preview_width,
+                        scale,
+                    )?;
 
-                    let screenshot_pixels = PixelArray::new(&rect[..], width.into());
-                    update_cursor(conn, create_new_cursor(conn, &screenshot_pixels)?)?;
+                    let screenshot_pixels = PixelArray::new(&pixels[..], width.into());
+                    update_cursor(
+                        conn,
+                        create_new_cursor(conn, &screenshot_pixels, preview_width)?,
+                    )?;
                 }
-                _ => {
-                    // ???
-                }
+                _ => {}
             }
         } else {
             break None;
