@@ -19,3 +19,26 @@ macro_rules! impl_ensure_odd {
 impl_ensure_odd!(u16);
 impl_ensure_odd!(u32);
 impl_ensure_odd!(usize);
+
+pub trait Clamped {
+    fn clamped(self, min: Self, max: Self) -> Self;
+}
+
+macro_rules! impl_clamped {
+    ($type:ident) => {
+        impl Clamped for $type {
+            fn clamped(self, min: Self, max: Self) -> Self {
+                if self < min {
+                    min
+                } else if self > max {
+                    max
+                } else {
+                    self
+                }
+            }
+        }
+    };
+}
+
+impl_clamped!(i16);
+

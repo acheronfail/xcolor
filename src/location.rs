@@ -7,7 +7,7 @@ use xcb::xproto;
 use crate::color::{self, ARGB};
 use crate::draw::draw_magnifying_glass;
 use crate::pixel::{PixelArray, PixelArrayMut};
-use crate::util::EnsureOdd;
+use crate::util::{EnsureOdd, Clamped};
 
 // Left mouse button
 const SELECTION_BUTTON: xproto::Button = 1;
@@ -74,17 +74,22 @@ fn create_new_cursor(
 // TODO: test multi-monitor
 fn get_window_rect_around_pointer(
     conn: &Connection,
-    root: u32,
+    screen: &xproto::Screen,
     (x, y): (i16, i16),
     preview_width: u32,
     scale: u32,
 ) -> Result<(u16, Vec<ARGB>), Error> {
+    let root = screen.root();
+    let root_width = screen.width_in_pixels() as i16;
+    let root_height = screen.height_in_pixels() as i16;
+
     // FIXME: fails if we ask for a region outside the screen, so fill those pixels with empty data
     let size = ((preview_width / scale) as u16).ensure_odd();
-    let x = x - ((size as i16) / 2);
-    let y = y - ((size as i16) / 2);
+    let x = (x - ((size as i16) / 2)).clamped(0, root_width - 1);
+    let y = (y - ((size as i16) / 2)).clamped(0, root_height - 1);
 
-    Ok((size, color::window_rect(conn, root, (x, y, size, size))?))
+    let pixels = color::window_rect(conn, root, (x, y, size, size))?;
+    Ok((size, pixels))
 }
 
 pub fn wait_for_location(
@@ -99,7 +104,7 @@ pub fn wait_for_location(
     let pointer = xproto::query_pointer(conn, root).get_reply()?;
     let pointer_pos = (pointer.root_x(), pointer.root_y());
     let (width, initial_rect) =
-        get_window_rect_around_pointer(conn, root, pointer_pos, preview_width, scale)?;
+        get_window_rect_around_pointer(conn, screen, pointer_pos, preview_width, scale)?;
 
     let screenshot_pixels = PixelArray::new(&initial_rect[..], width.into());
     grab_cursor(
@@ -125,7 +130,7 @@ pub fn wait_for_location(
                     let pointer_pos = (event.root_x(), event.root_y());
                     let (width, pixels) = get_window_rect_around_pointer(
                         conn,
-                        root,
+                        screen,
                         pointer_pos,
                         preview_width,
                         scale,
