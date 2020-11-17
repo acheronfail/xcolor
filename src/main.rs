@@ -1,9 +1,12 @@
 mod atoms;
 mod cli;
 mod color;
+mod draw;
 mod format;
 mod location;
+mod pixel;
 mod selection;
+mod util;
 
 use clap::ArgMatches;
 use failure::{err_msg, Error};
