@@ -71,7 +71,9 @@ fn create_new_cursor(
     } as u32)
 }
 
-// TODO: test multi-monitor
+// NOTE: this works for multi-monitor configurations since it seems that X fills in the blank
+// space with empty pixels when calling XGetImage with a rect that crosses the boundaries of two differently
+// sized or misaligned screens
 fn get_window_rect_around_pointer(
     conn: &Connection,
     screen: &xproto::Screen,
@@ -82,9 +84,6 @@ fn get_window_rect_around_pointer(
     let root = screen.root();
     let root_width = screen.width_in_pixels() as isize;
     let root_height = screen.height_in_pixels() as isize;
-
-    // NOTE: XCB APIs fail if we ask for a region outside the screen, so clamp the rect to the screen and
-    // fill the clamped pixels with empty data
 
     let size = ((preview_width / scale) as isize).ensure_odd();
 
@@ -101,8 +100,15 @@ fn get_window_rect_around_pointer(
     let size_y = if y + size > (root_height) { (root_height) - y } else { size - y_offset };
 
     let screenshot = color::window_rect(conn, root, (x as i16, y as i16, size_x as u16, size_y as u16))?;
-    let mut pixels = vec![ARGB::TRANSPARENT; (size * size) as usize];
 
+    // the entire portion of the screenshot is on screen
+    if size_x == size && size_y == size {
+        return Ok((size as u16, screenshot))
+    }
+
+    // NOTE: XCB APIs fail when requesting a region outside the screen, so clamp the rect to the screen and
+    // fill the clamped pixels with empty data
+    let mut pixels = vec![ARGB::TRANSPARENT; (size * size) as usize];
     for x in 0..size_x {
         for y in 0..size_y {
             let screenshot_idx = (y * size_x) + x;
