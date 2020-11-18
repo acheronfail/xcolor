@@ -11,11 +11,20 @@ pub struct PixelArray<'a, T> {
 
 impl<'a, T> PixelArray<'a, T> {
     pub fn new(pixels: &'a [T], width: usize) -> Self {
+        assert_eq!(pixels.len(), width * width, "data for PixelArray must be a square");
         Self { pixels, width }
     }
 
     pub fn width(&self) -> usize {
         self.width
+    }
+
+    pub fn len(&self) -> usize {
+        self.pixels.len()
+    }
+
+    pub fn index(&self, (x, y): Point) -> usize {
+        x * self.width + y
     }
 }
 
@@ -28,8 +37,8 @@ impl<'a, T> Index<usize> for PixelArray<'a, T> {
 
 impl<'a, T> Index<Point> for PixelArray<'a, T> {
     type Output = T;
-    fn index(&self, (x, y): Point) -> &Self::Output {
-        &self.pixels[x * self.width + y]
+    fn index(&self, point: Point) -> &Self::Output {
+        &self.pixels[self.index(point)]
     }
 }
 
@@ -41,6 +50,7 @@ pub struct PixelArrayMut<'a, T> {
 
 impl<'a, T> PixelArrayMut<'a, T> {
     pub fn new(pixels: &'a mut [T], width: usize) -> Self {
+        assert_eq!(pixels.len(), width * width, "data for PixelArrayMut must be a square");
         Self { pixels, width }
     }
 
@@ -51,6 +61,14 @@ impl<'a, T> PixelArrayMut<'a, T> {
 
     pub fn width(&self) -> usize {
         self.width
+    }
+
+    pub fn len(&self) -> usize {
+        self.pixels.len()
+    }
+
+    pub fn index(&self, (x, y): Point) -> usize {
+        x * self.width + y
     }
 }
 
@@ -69,13 +87,13 @@ impl<'a, T> IndexMut<usize> for PixelArrayMut<'a, T> {
 
 impl<'a, T> Index<Point> for PixelArrayMut<'a, T> {
     type Output = T;
-    fn index(&self, (x, y): Point) -> &Self::Output {
-        &self.pixels[x * self.width + y]
+    fn index(&self, point: Point) -> &Self::Output {
+        &self.pixels[self.index(point)]
     }
 }
 
 impl<'a, T> IndexMut<Point> for PixelArrayMut<'a, T> {
-    fn index_mut(&mut self, (x, y): Point) -> &mut Self::Output {
-        &mut self.pixels[(x * self.width + y)]
+    fn index_mut(&mut self, point: Point) -> &mut Self::Output {
+        &mut self.pixels[(self.index(point))]
     }
 }

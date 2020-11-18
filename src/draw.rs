@@ -42,8 +42,20 @@ pub fn draw_magnifying_glass(
     for cx in 0..cursor_width {
         for cy in 0..cursor_width {
             // screenshot coordinates
-            let sx = ((cx + offset) / pixel_size) as usize;
-            let sy = ((cy + offset) / pixel_size) as usize;
+            let mut sx = ((cx + offset) / pixel_size) as usize;
+            let mut sy = ((cy + offset) / pixel_size) as usize;
+            if screenshot.index((sx, sy)) >= screenshot.len() {
+                // dbg!(pixel_size);
+                // dbg!(screenshot_width);
+                // dbg!(screenshot.len());
+                // dbg!(cursor_width);
+                // dbg!(cx, cy);
+                // dbg!(sx, sy);
+                // dbg!(offset);
+                sx = screenshot.width() - 1;
+                sy = screenshot.width() - 1;
+            }
+
             let screenshot_color = screenshot[(sx, sy)];
 
             // set cursor pixel
