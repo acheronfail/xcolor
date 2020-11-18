@@ -3,14 +3,13 @@ use std::slice;
 
 type Point = (usize, usize);
 
-/// TODO: doc
+/// A wrapper struct for a a one-dimensional vector that represents a square of values
 pub struct PixelArray<'a, T> {
     pixels: &'a [T],
     width: usize,
 }
 
 impl<'a, T> PixelArray<'a, T> {
-    /// TODO: doc
     pub fn new(pixels: &'a [T], width: usize) -> Self {
         Self { pixels, width }
     }
@@ -34,19 +33,18 @@ impl<'a, T> Index<Point> for PixelArray<'a, T> {
     }
 }
 
-/// TODO: doc
+/// A wrapper struct for a a one-dimensional vector that represents a square of mutable values
 pub struct PixelArrayMut<'a, T> {
     pixels: &'a mut [T],
     width: usize,
 }
 
 impl<'a, T> PixelArrayMut<'a, T> {
-    /// TODO: doc
     pub fn new(pixels: &'a mut [T], width: usize) -> Self {
         Self { pixels, width }
     }
 
-    /// TODO: doc
+    /// Instantiates a new `PixelArrayMut` from a pointer to a C array
     pub unsafe fn from_raw_parts(data: *mut T, width: usize) -> Self {
         Self::new(slice::from_raw_parts_mut(data, width * width), width)
     }

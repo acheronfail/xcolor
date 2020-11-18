@@ -1,8 +1,11 @@
 [package]
 name = "xcolor"
-version = "0.4.1"
+version = "0.5.0"
 description = "Lightweight color picker for X11"
-authors = ["Samuel Laurén <samuel.lauren@iki.fi>"]
+authors = [
+  "Samuel Laurén <samuel.lauren@iki.fi>",
+  "Callum Osmotherly <acheronfail@gmail.com>"
+]
 license = "MIT"
 readme = "README.md"
 categories = ["command-line-utilities"]

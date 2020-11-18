@@ -13,7 +13,8 @@ use crate::util::EnsureOdd;
 const SELECTION_BUTTON: xproto::Button = 1;
 const GRAB_MASK: u16 = (xproto::EVENT_MASK_BUTTON_PRESS | xproto::EVENT_MASK_POINTER_MOTION) as u16;
 
-fn grab_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
+// Exclusively grabs the pointer so we get all its events
+fn grab_pointer(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
     let reply = xproto::grab_pointer(
         conn,
         false,
@@ -34,6 +35,7 @@ fn grab_cursor(conn: &Connection, root: u32, cursor: u32) -> Result<(), Error> {
     Ok(())
 }
 
+// Updates the cursor for an _already grabbed pointer_
 fn update_cursor(conn: &Connection, cursor: u32) -> Result<(), Error> {
     xproto::change_active_pointer_grab_checked(conn, cursor, xbase::CURRENT_TIME, GRAB_MASK)
         .request_check()?;
@@ -41,6 +43,7 @@ fn update_cursor(conn: &Connection, cursor: u32) -> Result<(), Error> {
     Ok(())
 }
 
+// Creates a new `XcursorImage`, draws the picker into it and loads it, returning the id for a `Cursor`
 fn create_new_cursor(
     conn: &Connection,
     screenshot_pixels: &PixelArray<ARGB>,
@@ -87,23 +90,33 @@ fn get_window_rect_around_pointer(
 
     let size = ((preview_width / scale) as isize).ensure_odd();
 
+    // the top left coordinates of the rect: make sure they don't go offscreen
     let mut x = (pointer_x as isize) - (size / 2);
     let mut y = (pointer_y as isize) - (size / 2);
-
     let x_offset = if x < 0 { -x } else { 0 };
     let y_offset = if y < 0 { -y } else { 0 };
-
     x += x_offset;
     y += y_offset;
 
-    let size_x = if x + size > (root_width) { (root_width) - x } else { size - x_offset };
-    let size_y = if y + size > (root_height) { (root_height) - y } else { size - y_offset };
+    // the size of the rect: make sure they don't extend past the screen
+    let size_x = if x + size > (root_width) {
+        (root_width) - x
+    } else {
+        size - x_offset
+    };
+    let size_y = if y + size > (root_height) {
+        (root_height) - y
+    } else {
+        size - y_offset
+    };
 
-    let screenshot = color::window_rect(conn, root, (x as i16, y as i16, size_x as u16, size_y as u16))?;
+    // grab a screenshot of the rect
+    let rect = (x as i16, y as i16, size_x as u16, size_y as u16);
+    let screenshot_rect = color::window_rect(conn, root, rect)?;
 
     // the entire portion of the screenshot is on screen
     if size_x == size && size_y == size {
-        return Ok((size as u16, screenshot))
+        return Ok((size as u16, screenshot_rect));
     }
 
     // NOTE: XCB APIs fail when requesting a region outside the screen, so clamp the rect to the screen and
@@ -114,7 +127,7 @@ fn get_window_rect_around_pointer(
             let screenshot_idx = (y * size_x) + x;
             let pixels_idx = (y + y_offset) * size + (x + x_offset);
 
-            pixels[pixels_idx as usize] = screenshot[screenshot_idx as usize];
+            pixels[pixels_idx as usize] = screenshot_rect[screenshot_idx as usize];
         }
     }
 
@@ -136,11 +149,8 @@ pub fn wait_for_location(
         get_window_rect_around_pointer(conn, screen, pointer_pos, preview_width, scale)?;
 
     let screenshot_pixels = PixelArray::new(&initial_rect[..], width.into());
-    grab_cursor(
-        conn,
-        root,
-        create_new_cursor(conn, &screenshot_pixels, preview_width)?,
-    )?;
+    let cursor_image = create_new_cursor(conn, &screenshot_pixels, preview_width)?;
+    grab_pointer(conn, root, cursor_image)?;
 
     let result = loop {
         let event = conn.wait_for_event();
@@ -151,6 +161,7 @@ pub fn wait_for_location(
                     if event.detail() == SELECTION_BUTTON {
                         let pixels =
                             color::window_rect(conn, root, (event.root_x(), event.root_y(), 1, 1))?;
+
                         break Some(pixels[0]);
                     }
                 }
@@ -166,10 +177,8 @@ pub fn wait_for_location(
                     )?;
 
                     let screenshot_pixels = PixelArray::new(&pixels[..], width.into());
-                    update_cursor(
-                        conn,
-                        create_new_cursor(conn, &screenshot_pixels, preview_width)?,
-                    )?;
+                    let cursor_image = create_new_cursor(conn, &screenshot_pixels, preview_width)?;
+                    update_cursor(conn, cursor_image)?;
                 }
                 _ => {}
             }

@@ -8,7 +8,7 @@ mod pixel;
 mod selection;
 mod util;
 
-use clap::ArgMatches;
+use clap::{value_t, ArgMatches, ErrorKind};
 use failure::{err_msg, Error};
 use nix::unistd::ForkResult;
 use xcb::base::Connection;
@@ -17,6 +17,9 @@ use crate::cli::get_cli;
 use crate::format::{Format, FormatColor, FormatString};
 use crate::location::wait_for_location;
 use crate::selection::{into_daemon, set_selection, Selection};
+
+const DEFAULT_PREVIEW_SIZE: u32 = 256 - 1;
+const DEFAULT_SCALE: u32 = 8;
 
 fn run(args: &ArgMatches) -> Result<(), Error> {
     fn error(message: &str) -> ! {
@@ -39,16 +42,15 @@ fn run(args: &ArgMatches) -> Result<(), Error> {
         &simple_format
     };
 
-    let scale = args
-        .value_of("scale")
-        .unwrap_or("8")
-        .parse::<u32>()
-        .unwrap_or_else(|e| error(&format!("Invalid scale value: {}", e)));
-    let preview_size = args
-        .value_of("preview_size")
-        .unwrap_or("255")
-        .parse::<u32>()
-        .unwrap_or_else(|e| error(&format!("Invalid preview_size value: {}", e)));
+    let scale = value_t!(args.value_of("scale"), u32).unwrap_or_else(|e| match e.kind {
+        ErrorKind::ArgumentNotFound => DEFAULT_SCALE,
+        _ => error(&format!("{}", e)),
+    });
+    let preview_size =
+        value_t!(args.value_of("preview_size"), u32).unwrap_or_else(|e| match e.kind {
+            ErrorKind::ArgumentNotFound => DEFAULT_PREVIEW_SIZE,
+            _ => error(&format!("{}", e)),
+        });
 
     let selection = args.values_of("selection").and_then(|mut v| {
         v.next()

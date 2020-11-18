@@ -105,7 +105,6 @@ pub fn window_rect(
         return Err(err_msg("Unsupported color depth"));
     }
 
-    // FIXME: transmute this rather than building up a new vec?
     let data = reply.data();
     let mut pixels = Vec::with_capacity(data.len());
     for chunk in data.chunks(4) {
