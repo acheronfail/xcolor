@@ -21,8 +21,8 @@ pub fn draw_magnifying_glass(
     pixel_size: usize,
 ) {
     assert!(pixel_size % 2 != 0, "pixel_size must be odd");
-    assert!(cursor.width() % 2 != 0, "cursor.length must be odd");
-    assert!(screenshot.width() % 2 != 0, "screenshot.length must be odd");
+    assert!(cursor.width() % 2 != 0, "cursor.width must be odd");
+    assert!(screenshot.width() % 2 != 0, "screenshot.width must be odd");
 
     let transparent: u32 = ARGB::TRANSPARENT.into();
 

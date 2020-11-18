@@ -7,7 +7,7 @@ use xcb::xproto;
 use crate::color::{self, ARGB};
 use crate::draw::draw_magnifying_glass;
 use crate::pixel::{PixelArray, PixelArrayMut};
-use crate::util::{EnsureOdd, Clamped};
+use crate::util::EnsureOdd;
 
 // Left mouse button
 const SELECTION_BUTTON: xproto::Button = 1;
@@ -71,74 +71,48 @@ fn create_new_cursor(
     } as u32)
 }
 
-pub struct Rect {
-    x: i16,
-    y: i16,
-    width: u16,
-    height: u16
-}
-
-impl Rect {
-    pub fn new(x: i16, y: i16, width: u16, height: u16) -> Rect {
-        Rect { x, y, width, height }
-    }
-
-    pub fn is_inside(&self, x: i16, y: i16) -> bool {
-        let x_is_inside = x >= self.x && x <= self.x + self.width;
-        let y_is_inside = y >= self.y && y <= self.y + self.height;
-        x_is_inside && y_is_inside
-    }
-
-    // TODO: should this be greater than u16?
-    pub fn area(&self) -> u16 {
-        self.width * self.height
-    }
-}
-
-impl From<Rect> for (i16, i16, u16, u16) {
-    fn from(rect: Rect) -> (i16, i16, u16, u16) {
-        (rect.x, rect.y, rect.width, rect.height)
-    }
-}
-
 // TODO: test multi-monitor
 fn get_window_rect_around_pointer(
     conn: &Connection,
     screen: &xproto::Screen,
-    (x, y): (i16, i16),
+    (pointer_x, pointer_y): (i16, i16),
     preview_width: u32,
     scale: u32,
 ) -> Result<(u16, Vec<ARGB>), Error> {
     let root = screen.root();
-    let root_width = screen.width_in_pixels() as i16;
-    let root_height = screen.height_in_pixels() as i16;
+    let root_width = screen.width_in_pixels() as isize;
+    let root_height = screen.height_in_pixels() as isize;
 
-    // FIXME: fails if we ask for a region outside the screen, so fill those pixels with empty data
-    let size = ((preview_width / scale) as u16).ensure_odd();
-    let x = x - ((size as i16) / 2);
-    let y = y - ((size as i16) / 2);
-    let desired_rect = Rect::new(x, y, size, size);
-    let actual_rect = Rect::new(
-        x.clamped(0, x),
-        y.clamped(0, y),
-        size.clamped(1, root_width - x),
-        size.clamped(1, root_height - y)
-    );
+    // NOTE: XCB APIs fail if we ask for a region outside the screen, so clamp the rect to the screen and
+    // fill the clamped pixels with empty data
 
-    let screenshot = color::window_rect(conn, root, actual_rect)?;
-    if screenshot.len() < desired_rect.area() {
-        let mut pixels = Vec::with_capacity(desired_area);
-        for x in 0..actual.width {
-            for y in 0..actual.height {
-                if desired_rect.is_inside(x, y) {
-                    // FIXME: get coordinates from screenshot vec?
-                    // there's probably an easier way to do this...
-                    pixels[x * size + y] = screenshot
-            }
+    let size = ((preview_width / scale) as isize).ensure_odd();
+
+    let mut x = (pointer_x as isize) - (size / 2);
+    let mut y = (pointer_y as isize) - (size / 2);
+
+    let x_offset = if x < 0 { -x } else { 0 };
+    let y_offset = if y < 0 { -y } else { 0 };
+
+    x += x_offset;
+    y += y_offset;
+
+    let size_x = if x + size > (root_width) { (root_width) - x } else { size - x_offset };
+    let size_y = if y + size > (root_height) { (root_height) - y } else { size - y_offset };
+
+    let screenshot = color::window_rect(conn, root, (x as i16, y as i16, size_x as u16, size_y as u16))?;
+    let mut pixels = vec![ARGB::TRANSPARENT; (size * size) as usize];
+
+    for x in 0..size_x {
+        for y in 0..size_y {
+            let screenshot_idx = (y * size_x) + x;
+            let pixels_idx = (y + y_offset) * size + (x + x_offset);
+
+            pixels[pixels_idx as usize] = screenshot[screenshot_idx as usize];
         }
-    } else {
-        Ok((size, screenshot))
     }
+
+    Ok((size as u16, pixels))
 }
 
 pub fn wait_for_location(
